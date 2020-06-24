@@ -309,6 +309,7 @@ def save(model, train_data, epochs, architecture):
                   "hidden_input_size": model.classifier.fc1.out_features,
                   "output_size": model.classifier.fc2.out_features,
                   "state_dict": model.state_dict(), # Holds all the weights and biases
+                  "classifier": model.classifier,
                   "epochs": epochs,
                   "class_to_idx": model.class_to_idx
                  }
@@ -327,7 +328,6 @@ def main():
         print("GPU mode not specified, will use the default value - Use GPU")
         gpu = "Y"
     # Device setting:
-    print("\nDevice setting ...")
     device = device_setting(gpu)
     
     # Prepare the datasets and dataloaders:
@@ -344,7 +344,6 @@ def main():
                                           output_size=args.output_size)
     
     # Train the model:
-    print("\nModel training part ...")
     model = train(model=model,
                   epochs=1,
                   learning_rate=args.learning_rate,

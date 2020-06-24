@@ -7,10 +7,9 @@ import json
 import PIL
 from torchvision import models, transforms
 
-from train import device
+from train import device_setting
 
 import argparse
-import sys
 
 def arg_parser():
     '''
@@ -42,15 +41,15 @@ def arg_parser():
 
     return(args)
 
-def process_image(image_path):
+def process_image(image):
     '''
     Scales, crops, and normalizes a PIL image for a PyTorch model, returns an Numpy array
     
     Parameters
     ==========
-    image_path: str, file paths of the images 
+    image: str, file paths of the images 
     '''
-    image1=Image.open(image_path)
+    image_load = PIL.Image.open(image)
     
     # TODO: Process a PIL image for use in a PyTorch model
     proc = transforms.Compose([transforms.Resize(256),
@@ -58,8 +57,7 @@ def process_image(image_path):
                                transforms.ToTensor(),
                                transforms.Normalize(mean=[0.485, 0.456, 0.406], 
                                                     std=[0.229, 0.224, 0.225])])
-    image1 = proc(image1)
-    return image1
+    return proc(image_load)
 
 def load_model(checkpoint_path, device):
     """
@@ -73,11 +71,14 @@ def load_model(checkpoint_path, device):
     checkpoint = torch.load(checkpoint_path)
     architecture = checkpoint['architecture']
     
-    if(architecture=='vgg16'):
+    if(architecture == 'vgg16'):
         model = models.vgg16(pretrained=True)
         model = model.to(device)
+    elif architecture == 'densenet121':
+        model = models.densenet121(pretrained=True)
+        model = model.to(device)
     else:
-        print('Unsupported architecture. Only VGG16 is available.')
+        print('Architecture unavailable. Only vgg16 and densenet121 are allowed. Please use train.py to create the model.')
         
     for param in model.parameters():
         param.requires_grad = False
@@ -88,7 +89,7 @@ def load_model(checkpoint_path, device):
 
     return model
 
-def predict(model, image_path, topk=5):
+def predict(model, image_path, device, topk=5):
     ''' Predict the class (or classes) of an image using a trained deep learning model.
     
     For here, CPU mode is used for prediction.
@@ -99,7 +100,7 @@ def predict(model, image_path, topk=5):
     image = image.unsqueeze_(0)
     
     with torch.no_grad():
-        output = model.forward(image)
+        output = model.forward(image.to(device))
         
     probabilities = torch.exp(output)
     
@@ -131,7 +132,7 @@ def main():
     else:
         print('GPU mode not specified, will use the default value - "Y"')
         gpu = "Y"
-    device = device(gpu)
+    device = device_setting(gpu)
     
     # Model loading:
     if(args.checkpoint):
