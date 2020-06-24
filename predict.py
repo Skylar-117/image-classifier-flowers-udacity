@@ -10,6 +10,7 @@ from torchvision import models, transforms
 from train import device
 
 import argparse
+import sys
 
 def arg_parser():
     '''
@@ -20,10 +21,12 @@ def arg_parser():
     
     parser.add_argument('--gpu', 
                         type=str, 
+                        default='Y',
                         help='Use GPU (Y for Yes; N for No). Default is Y.')
 
     parser.add_argument('--checkpoint',
                         type=str,
+                        default='checkpoint.pth',
                         help='Path for model checkpoint created using train.py. Default is \'./checkpoint.pth\'.')
 
     parser.add_argument('--image',
@@ -32,6 +35,7 @@ def arg_parser():
 
     parser.add_argument('--topk', 
                         type=int, 
+                        default=5,
                         help='Top K predictions to show. Default is 5.')
 
     args = parser.parse_args()
@@ -84,7 +88,7 @@ def load_model(checkpoint_path, device):
 
     return model
 
-def predict(model, image_path, model, topk=5):
+def predict(model, image_path, topk=5):
     ''' Predict the class (or classes) of an image using a trained deep learning model.
     
     For here, CPU mode is used for prediction.

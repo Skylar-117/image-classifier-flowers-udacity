@@ -20,24 +20,31 @@ def arg_parser():
     
     parser.add_argument('--architecture', 
                         type=str, 
+                        default='vgg16',
                         help='Architecture and model from torchvision.models as strings: vgg16 and densenet121 supported.')
     parser.add_argument('--learning_rate', 
                         type=float, 
+                        default=0.001,
                         help='Learning rate of the Neural Network. Default is 0.001.')
     parser.add_argument('--hidden_size', 
-                        type=int, 
+                        type=int,
+                        default=1500,
                         help='Size of the hidden layer of the Neural Network. Default is 1500.')
     parser.add_argument('--dropout',
                        type=float,
+                       default=0.5,
                        help='Dropout value for the dropout layer. Default is 0.5.')
     parser.add_argument('--output_size',
                        type=int,
+                       default=102,
                        help='Size of the network output. Default is 102.')
     parser.add_argument('--epochs', 
                         type=int, 
+                        default=5,
                         help='Number of epochs for training Neural Network. Default is 5.')
     parser.add_argument('--gpu', 
                         type=str, 
+                        default='Y',
                         help='Use GPU or not, (if Y then use GPU; if N then do not use GPU). Default is Y.')
 
     args = parser.parse_args()
@@ -95,7 +102,7 @@ def load_dataset(data_dir='flowers'):
             image_datasets['validation'],
             image_datasets['testing'])
 
-def device(gpu):
+def device_setting(gpu):
     '''
     Device setting of GPU usage or not. Device variable is returned.
     
@@ -106,14 +113,14 @@ def device(gpu):
     if(gpu=='Y'):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if(device=='cpu'):
-            print('CUDA not available, will use CPU...')
+            print('CUDA not available, will use CPU ...')
         else:
-            print('Use GPU...')
+            print('Use GPU ...')
     else: # CPU mode
         device = 'cpu'
-        print('Use CPU...')
+        print('Use CPU ...')
 
-    return(device)
+    return device
 
 def network(device, architecture='vgg16', learning_rate=0.001, hidden_size=1500, dropout=0.5, output_size=102):
     '''
@@ -121,16 +128,29 @@ def network(device, architecture='vgg16', learning_rate=0.001, hidden_size=1500,
     
     Parameters
     ==========
-    device: device object returned from function device()
+    device: device object returned from function device_setting()
     architecture: str, here only vgg16 is available
     learning_rate: float, learning rate from the model parameter, default 0.001
     hidden_size: int, only 1 hidden layer here, and this is the size of the input of the hidden layer, default 1500
     dropout: float, dropout value for dropout layer, default 0.5
     output_size: int, default is 102 and this is not changable since 102 is the number of classes
     '''
-    model = models.vgg16(pretrained=True)
-    model.name = architecture
-    input_size = model.classifier[0].in_features
+    if(architecture):
+        if(architecture=='vgg16'):
+            model = models.vgg16(pretrained=True)
+            model.name = architecture
+            input_size = model.classifier[0].in_features
+        elif(architecture=='densenet121'):
+            model = models.densenet121(pretrained=True)
+            model.name = architecture
+            input_size = 1024
+        else:
+            print('Only vgg16 or densenet121 is supported.')
+    else:
+        print('Architecture not specified, will use default architecture: vgg16')
+        model = models.vgg16(pretrained=True)
+        model.name = architecture
+        input_size = model.classifier[0].in_features
         
     if(hidden_size):
         hidden_size = hidden_size
@@ -171,7 +191,7 @@ def network(device, architecture='vgg16', learning_rate=0.001, hidden_size=1500,
 
     return(model, criterion, optimizer)
 
-def train(model, epochs, learning_rate, criterion, optimizer, training_loader, validation_loader, device):
+def train(model, epochs, learning_rate, criterion, optimizer, train_loader, valid_loader, device):
 
     """Train the NN.
     
@@ -186,6 +206,7 @@ def train(model, epochs, learning_rate, criterion, optimizer, training_loader, v
     validation_loader: dataloaders for validation
     """
     steps = 0
+    print_every = 20
     model.to(device)
     
     if(epochs):
@@ -198,8 +219,8 @@ def train(model, epochs, learning_rate, criterion, optimizer, training_loader, v
     print("Starting training ...")
     for e in range(epochs):
         running_loss = 0
-        for inputs_train, labels_train in training_loader:
-            step += 1
+        for inputs_train, labels_train in train_loader:
+            steps += 1
             inputs_train = inputs_train.to(device)
             labels_train = labels_train.to(device)
 
@@ -213,13 +234,13 @@ def train(model, epochs, learning_rate, criterion, optimizer, training_loader, v
             running_loss += loss.item() # This tracks the training loss over all the epochs
 
             # Every 'print_every' steps, validate the results:
-            if(step%print_every==0):
+            if(steps % print_every == 0):
 
                 model.eval()
                 valid_loss = 0
                 accuracy = 0
                 with torch.no_grad():
-                    for inputs_valid, labels_valid in validation_loader:
+                    for inputs_valid, labels_valid in valid_loader:
                         inputs_valid = inputs_valid.to(device)
                         labels_valid = labels_valid.to(device)
 
@@ -236,8 +257,8 @@ def train(model, epochs, learning_rate, criterion, optimizer, training_loader, v
 
                 print(f"Epoch: {e+1}/{epochs}, "
                       f"Train loss: {running_loss/print_every:.3f}, "
-                      f"Validation loss: {valid_loss/len(validation_loader):.3f}, "
-                      f"Validation accuracy: {accuracy/len(validation_loader):.3f}")
+                      f"Validation loss: {valid_loss/len(valid_loader):.3f}, "
+                      f"Validation accuracy: {accuracy/len(valid_loader):.3f}")
 
                 running_loss = 0
                 model.train()
@@ -245,27 +266,24 @@ def train(model, epochs, learning_rate, criterion, optimizer, training_loader, v
     print("Finished training!")
     return model
 
-def test(model, criterion, testing_loader):
+def test(model, test_loader, device):
     """Function for validating the result on test set.
     
     Parameters
     ==========
     model: network object returned from network() function
     criterion: loss function returned from network() function
-    testing_loader: dataloader for testing
+    test_loader: dataloader for testing
     """
     model.eval()
     test_loss = 0
     accuracy = 0
     with torch.no_grad():
-        for inputs, labels in testing_loader:
+        for inputs, labels in test_loader:
             inputs = inputs.to(device)
             labels = labels.to(device)
 
             output = model.forward(inputs)
-            loss = criterion(output, labels)
-
-            test_loss += loss.item() # This tracks the valid loss over all the epochs
 
             # Calculate accuracy
             ps = torch.exp(output)
@@ -273,9 +291,9 @@ def test(model, criterion, testing_loader):
             equals = top_class == labels.view(*top_class.shape)
             accuracy += torch.mean(equals.type(torch.FloatTensor)).item()
 
-    print(f"Accuracy on test set is: {accuracy/len(testing_loader):.3f}")
+    print(f"Accuracy on test set is: {accuracy/len(test_loader):.3f}")
 
-def save(model, train_data=image_datasets["training"], epochs, architecture):
+def save(model, train_data, epochs, architecture):
     '''Saves the model checkpoint to the given path.
     '''
     model.class_to_idx = train_data.class_to_idx
@@ -291,14 +309,13 @@ def save(model, train_data=image_datasets["training"], epochs, architecture):
                   "hidden_input_size": model.classifier.fc1.out_features,
                   "output_size": model.classifier.fc2.out_features,
                   "state_dict": model.state_dict(), # Holds all the weights and biases
-                  "learning_rate": learning_rate,
                   "epochs": epochs,
-                  "optimizer": optimizer.state_dict(),
                   "class_to_idx": model.class_to_idx
                  }
 
-    torch.save(checkpoint, "checkpoint.pth")
-    print(f"Model saved to {"checkpoint.pth"}")
+    file_name = "checkpoint.pth"
+    torch.save(checkpoint, file_name)
+    print(f"Model saved to {file_name}")
     
 def main():
     """Here is the function to run the entire training process, it gathers all steps/function orderly to go through the trainig process.
@@ -310,12 +327,15 @@ def main():
         print("GPU mode not specified, will use the default value - Use GPU")
         gpu = "Y"
     # Device setting:
-    device = device(gpu)
+    print("\nDevice setting ...")
+    device = device_setting(gpu)
     
     # Prepare the datasets and dataloaders:
-    train_loader, valid_loader, test_loader, train_data, valid_data, test_data = load()
+    print("\nPreparing dataset for train/valid/test ...")
+    train_loader, valid_loader, test_loader, train_data, valid_data, test_data = load_dataset()
     
     # Model architects, criterion and optimizer:
+    print("\nNetwork archetecture building ...")
     model, criterion, optimizer = network(device=device,
                                           architecture=args.architecture,
                                           learning_rate=args.learning_rate,
@@ -324,18 +344,22 @@ def main():
                                           output_size=args.output_size)
     
     # Train the model:
+    print("\nModel training part ...")
     model = train(model=model,
-                  train_loader=train_loader,
-                  valid_loader=valid_loader,
-                  device=device,
+                  epochs=1,
+                  learning_rate=args.learning_rate,
                   criterion=criterion,
                   optimizer=optimizer,
-                  epochs=args.epochs)
+                  train_loader=train_loader,
+                  valid_loader=valid_loader,
+                  device=device)
     
     # Validate the model performance on the test set:
+    print("\nValidate model performance on test set ...")
     test(model=model, test_loader=test_loader, device=device)
     
     # Save model checkpoint:
+    print("\nSave model checkpoint ...")
     save(model=model, train_data=train_data, epochs=args.epochs, architecture=args.architecture)
 
 if __name__ == '__main__':
