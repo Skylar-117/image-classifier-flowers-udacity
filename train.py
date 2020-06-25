@@ -344,8 +344,9 @@ def main():
                                           output_size=args.output_size)
     
     # Train the model:
+    print("\n")
     model = train(model=model,
-                  epochs=1,
+                  epochs=5,
                   learning_rate=args.learning_rate,
                   criterion=criterion,
                   optimizer=optimizer,

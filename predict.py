@@ -4,7 +4,7 @@ import pandas as pd
 
 import torch
 import json
-import PIL
+from PIL import Image
 from torchvision import models, transforms
 
 from train import device_setting
@@ -18,30 +18,21 @@ def arg_parser():
     
     parser = argparse.ArgumentParser(description='Image Classifier Prediction Params')
     
-    parser.add_argument('--gpu', 
-                        type=str, 
-                        default='Y',
-                        help='Use GPU (Y for Yes; N for No). Default is Y.')
+    parser.add_argument('--gpu', default='Y', type=str, help='Use GPU (Y for Yes; N for No). Default is Y.')
 
-    parser.add_argument('--checkpoint',
-                        type=str,
-                        default='checkpoint.pth',
-                        help='Path for model checkpoint created using train.py. Default is \'./checkpoint.pth\'.')
+    parser.add_argument('--checkpoint', default='checkpoint.pth', type=str, help='Path for model checkpoint created using train.py. Default is \'./checkpoint.pth\'.')
 
-    parser.add_argument('--image',
-                        type=str,
-                        help='Path for image to be predicted.')
+    parser.add_argument('--image', default='', type=str, help='Path for image to be predicted.')
 
-    parser.add_argument('--topk', 
-                        type=int, 
-                        default=5,
-                        help='Top K predictions to show. Default is 5.')
+    parser.add_argument('--category_names', default='cat_to_name.json', type=str, help='default category file')
+    
+    parser.add_argument('--topk', default=5, type=int, help='Top K predictions to show. Default is 5.')
 
     args = parser.parse_args()
 
     return(args)
 
-def process_image(image):
+def process_image(image_path):
     '''
     Scales, crops, and normalizes a PIL image for a PyTorch model, returns an Numpy array
     
@@ -49,15 +40,16 @@ def process_image(image):
     ==========
     image: str, file paths of the images 
     '''
-    image_load = PIL.Image.open(image)
-    
     # TODO: Process a PIL image for use in a PyTorch model
-    proc = transforms.Compose([transforms.Resize(256),
-                               transforms.CenterCrop(224),
-                               transforms.ToTensor(),
-                               transforms.Normalize(mean=[0.485, 0.456, 0.406], 
-                                                    std=[0.229, 0.224, 0.225])])
-    return proc(image_load)
+    transform = transforms.Compose([transforms.Resize(256),
+                        transforms.CenterCrop(224),
+                        transforms.ToTensor(),
+                        transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])])
+    
+    with Image.open(image_path) as image:
+        image = transform(image).numpy()
+
+    return image
 
 def load_model(checkpoint_path, device):
     """
@@ -89,39 +81,38 @@ def load_model(checkpoint_path, device):
 
     return model
 
-def predict(model, image_path, device, topk=5):
+def predict(model, image_path, category_names, device, topk=5):
     ''' Predict the class (or classes) of an image using a trained deep learning model.
     
     For here, CPU mode is used for prediction.
     '''
     model.eval()
-    model.to('cpu')
-    image = process_image(image_path)
-    image = image.unsqueeze_(0)
     
-    with torch.no_grad():
-        output = model.forward(image.to(device))
-        
-    probabilities = torch.exp(output)
+    image = torch.from_numpy(image_path).float()
+    image = torch.unsqueeze(image, dim=0)
+    
+    class_to_idx = model.class_to_idx
+    idx_to_class = {class_to_idx[k]: k for k in class_to_idx}
     
     if(topk):
         topk = topk
     else:
         print('No Top K specified, will use the default value - 5')
         topk = 5
+
+    with torch.no_grad():
+        output = model.forward(image.to(device))
+        prediction = torch.exp(output).topk(topk)
     
-    topk_probabilities, topk_labels = probabilities.topk(topk)
+    probabilities = prediction[0][0].cpu().data.numpy().tolist()
+    classes = prediction[1][0].cpu().data.numpy()
+    classes = [idx_to_class[i] for i in classes]
     
-    labels_list = test_labels.squeeze().tolist()
-    probabilities_list = test_probabilities.squeeze().tolist()
-    
-    with open('cat_to_name.json', 'r') as f:
+    with open(category_names, 'r') as f:
         cat_to_name = json.load(f)
-    text_labels_list = [cat_to_name[str(label)] for label in labels_list]
+    classes = [cat_to_name[x] for x in classes]
     
-    pred_lists = dict(zip(labels_list, probabilities_list))
-    
-    return pred_lists
+    return probabilities, classes
 
 def main():
     
@@ -141,11 +132,11 @@ def main():
         model = load_model('checkpoint.pth', device)
 
     # Image processing:
-    image = process_image(args.image)
+    processed_image = process_image(args.image)
 
     # Predictions:
-    predictions = predict(model, image, device, args.topk)
-    print(predictions)
+    probs, classes = predict(model, processed_image, args.category_names, device, args.topk)
+    print(f"Top {args.topk} predictions: {list(zip(probs, classes))}")
 
 if __name__ == '__main__':
     main()
